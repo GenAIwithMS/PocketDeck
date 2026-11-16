@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#111317">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>PocketDeck</title>
+<style>
+  :root { --bg:#111317; --pad:#1a1d23; --line:#2a2e36; --text:#e6e8eb; --dim:#8a919c; --accent:#4f8cff; --ok:#3ecf8e; --bad:#ff5f56; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font:15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow:hidden; overscroll-behavior:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  #app { display:flex; flex-direction:column; height:100%; padding:env(safe-area-inset-top) 10px calc(10px + env(safe-area-inset-bottom)); gap:10px; }
+  header { display:flex; align-items:center; gap:10px; padding:8px 4px 0; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); flex:none; transition:background .2s; }
+  .dot.ok { background:var(--ok); }
+  #status { flex:1; color:var(--dim); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  header button { background:none; border:1px solid var(--line); color:var(--text); border-radius:10px; width:40px; height:36px; font-size:18px; }
+  #pad { flex:1; position:relative; background:var(--pad); border:1px solid var(--line); border-radius:18px; touch-action:none; overflow:hidden; }
+  #hint { position:absolute; inset:auto 0 14px; text-align:center; color:#5a616c; font-size:12px; pointer-events:none; padding:0 12px; }
+  .ripple { position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background:rgba(79,140,255,.25); pointer-events:none; }
+  #buttons { display:flex; gap:10px; height:72px; flex:none; }
+  #buttons button { flex:1; background:var(--pad); border:1px solid var(--line); border-radius:16px; color:var(--dim); font-size:13px; touch-action:none; }
+  #buttons button.mid { flex:.45; }
+  #buttons button.on { background:#243049; border-color:var(--accent); color:var(--text); }
+  #kbd { display:none; flex:none; flex-direction:column; gap:8px; }
+  #app.kbd-open #kbd { display:flex; }
+  #app.kbd-open #buttons { display:none; }
+  #app.kbd-open #hint { display:none; }
+  #kbdBtn.on { border-color:var(--accent); background:#243049; }
+  #keys { display:flex; gap:6px; overflow-x:auto; touch-action:pan-x; scrollbar-width:none; padding-bottom:2px; }
+  #keys::-webkit-scrollbar { display:none; }
+  #keys button { flex:none; min-width:46px; height:42px; padding:0 10px; background:var(--pad); border:1px solid var(--line); border-radius:10px; color:var(--text); font-size:14px; }
+  #keys button.mod { color:#9db8ff; }
+  #keys button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #keys .sep { flex:none; width:1px; background:var(--line); margin:4px 2px; }
+  #type { height:46px; resize:none; font:16px system-ui, sans-serif; padding:11px 12px; border-radius:12px; border:1px solid var(--line); background:var(--bg); color:var(--text); user-select:text; -webkit-user-select:text; outline:none; }
+  #type:focus { border-color:var(--accent); }
+  .sheet { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; z-index:10; }
+  .sheet.open { display:flex; }
+  .card { background:#181b21; width:100%; border-radius:20px 20px 0 0; padding:20px 18px calc(20px + env(safe-area-inset-bottom)); max-height:90%; overflow:auto; touch-action:pan-y; }
+  .card h2 { margin:0 0 14px; font-size:18px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .row label { flex:1; }
+  .row output { color:var(--dim); width:40px; text-align:right; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:45%; accent-color:var(--accent); }
+  input[type=checkbox] { width:22px; height:22px; accent-color:var(--accent); }
+  .btn { display:block; width:100%; margin-top:16px; padding:14px; border:0; border-radius:12px; background:var(--accent); color:#fff; font-size:16px; }
+  .btn.ghost { background:none; border:1px solid var(--line); color:var(--text); }
+  #pinInput { width:100%; font-size:28px; letter-spacing:8px; text-align:center; padding:12px; border-radius:12px; border:1px solid var(--line); background:var(--bg); color:var(--text); user-select:text; -webkit-user-select:text; }
+  .muted { color:var(--dim); font-size:13px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="dot" id="dot"></span>
+    <span id="status">Connecting…</span>
+    <button id="kbdBtn" aria-label="Keyboard">⌨</button>
+    <button id="fsBtn" aria-label="Fullscreen">⛶</button>
+    <button id="setBtn" aria-label="Settings">⚙</button>
+  </header>
+  <div id="pad">
+    <div id="hint">1 finger: move · tap: click · tap-tap-drag: drag<br>2 fingers: scroll · tap: right-click · pinch: zoom<br>3 fingers tap: middle-click · 3/4 finger swipe: gestures</div>
+  </div>
+  <div id="kbd">
+    <div id="keys"></div>
+    <textarea id="type" rows="1" placeholder="Type here — it goes to the laptop" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"></textarea>
+  </div>
+  <div id="buttons">
+    <button data-btn="left">Left</button>
+    <button data-btn="middle" class="mid">Middle</button>
+    <button data-btn="right">Right</button>
+  </div>
+</div>
+
+<div class="sheet" id="settings">
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="row"><label for="speed">Pointer speed</label><input type="range" id="speed" min="0.4" max="4" step="0.1"><output></output></div>
+    <div class="row"><label for="accel">Acceleration</label><input type="range" id="accel" min="0" max="2" step="0.1"><output></output></div>
+    <div class="row"><label for="scroll">Scroll speed</label><input type="range" id="scroll" min="0.2" max="3" step="0.1"><output></output></div>
+    <div class="row"><label for="tap">Tap to click</label><input type="checkbox" id="tap"></div>
+    <div class="row"><label for="natural">Natural scrolling</label><input type="checkbox" id="natural"></div>
+    <div class="row"><label for="inertia">Scroll inertia</label><input type="checkbox" id="inertia"></div>
+    <div class="row"><label for="haptic">Vibrate on click</label><input type="checkbox" id="haptic"></div>
+    <button class="btn ghost" id="changePin">Change PIN</button>
+    <button class="btn" id="closeSet">Done</button>
+  </div>
+</div>
+
+<div class="sheet" id="pinSheet">
+  <div class="card">
+    <h2>Enter PIN</h2>
+    <p class="muted">The PIN is shown in the PocketDeck window on your laptop.</p>
+    <input id="pinInput" inputmode="numeric" autocomplete="off" maxlength="12">
+    <button class="btn" id="pinOk">Connect</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+
+  // ---------------- settings ----------------
+  const DEFAULTS = { speed: 1.6, accel: 1.0, scroll: 1.0, tap: true, natural: true, inertia: true, haptic: true };
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  let cfg = Object.assign({}, DEFAULTS);
+  try { Object.assign(cfg, JSON.parse(store.get('mp_cfg') || '{}')); } catch (e) {}
+
+  for (const k of Object.keys(DEFAULTS)) {
+    const el = document.getElementById(k);
+    const out = el.parentElement.querySelector('output');
+    if (el.type === 'checkbox') el.checked = cfg[k]; else { el.value = cfg[k]; out.textContent = cfg[k]; }
+    el.addEventListener('input', () => {
+      cfg[k] = el.type === 'checkbox' ? el.checked : parseFloat(el.value);
+      if (out) out.textContent = cfg[k];
+      store.set('mp_cfg', JSON.stringify(cfg));
+    });
+  }
+  $('#setBtn').onclick = () => $('#settings').classList.add('open');
+  $('#closeSet').onclick = () => $('#settings').classList.remove('open');
+  $('#changePin').onclick = () => { $('#settings').classList.remove('open'); showPin(); };
+  $('#fsBtn').onclick = () => {
+    const d = document.documentElement;
+    if (!document.fullscreenElement) (d.requestFullscreen || d.webkitRequestFullscreen || (() => {})).call(d);
+    else document.exitFullscreen();
+  };
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // keep screen on where supported
+  let wakeLock = null;
+  async function keepAwake() { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {} }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+  keepAwake();
+
+  // ---------------- connection ----------------
+  let pin = new URLSearchParams(location.search).get('k') || store.get('mp_pin') || '';
+  let ws = null, retry = null;
+  const setStatus = (text, ok) => { $('#status').textContent = text; $('#dot').classList.toggle('ok', !!ok); };
+
+  function connect() {
+    clearTimeout(retry);
+    if (!pin) { showPin(); return; }
+    setStatus('Connecting…');
+    ws = new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(pin)}`);
+    ws.onmessage = e => {
+      const m = JSON.parse(e.data);
+      if (m.t === 'hello') { setStatus('Connected · ' + m.host, true); store.set('mp_pin', pin); }
+    };
+    ws.onclose = e => {
+      if (e.code === 4001) { setStatus('Wrong PIN'); showPin(); return; }
+      setStatus('Disconnected · retrying…');
+      retry = setTimeout(connect, 1200);
+    };
+  }
+  function showPin() { $('#pinInput').value = ''; $('#pinSheet').classList.add('open'); setTimeout(() => $('#pinInput').focus(), 50); }
+  $('#pinOk').onclick = () => {
+    pin = $('#pinInput').value.trim();
+    $('#pinSheet').classList.remove('open');
+    if (ws) { ws.onclose = null; ws.close(); }
+    connect();
+  };
+  const send = a => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(a)); };
+  const buzz = () => { if (cfg.haptic && navigator.vibrate) navigator.vibrate(8); };
+
+  // batch movement into one message per frame
+  const pend = { mx: 0, my: 0, sh: 0, sv: 0, z: 0 };
+  let queued = false;
+  const r2 = v => Math.round(v * 100) / 100;
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(flush); } }
+  function flush() {
+    queued = false;
+    if (pend.mx || pend.my) { send(['m', r2(pend.mx), r2(pend.my)]); pend.mx = pend.my = 0; }
+    if (pend.sh || pend.sv) { send(['s', r2(pend.sh), r2(pend.sv)]); pend.sh = pend.sv = 0; }
+    if (pend.z) { send(['z', r2(pend.z)]); pend.z = 0; }
+  }
+
+  // ---------------- gesture engine ----------------
+  const pad = $('#pad');
+  const TAP_MS = 250, TAP_MOVE = 10, DRAG_WINDOW = 300, SWIPE_DIST = 60, PX_PER_NOTCH = 40;
+  const pts = new Map();
+  let g = null, lastTap = { t: 0, x: 0, y: 0 }, inertia = null;
+
+  function centroid() { let x = 0, y = 0; for (const p of pts.values()) { x += p.x; y += p.y; } return { x: x / pts.size, y: y / pts.size }; }
+  function spread() { if (pts.size < 2) return 0; const [a, b] = pts.values(); return Math.hypot(a.x - b.x, a.y - b.y); }
+  function rebase() { if (!g || !pts.size) return; g.c = centroid(); g.c0 = { ...g.c }; g.d0 = g.lastD = spread(); }
+
+  function ripple(x, y) {
+    const b = pad.getBoundingClientRect(), el = document.createElement('div');
+    el.className = 'ripple'; el.style.left = (x - b.left) + 'px'; el.style.top = (y - b.top) + 'px';
+    pad.appendChild(el);
+    el.animate([{ transform: 'scale(.5)', opacity: 1 }, { transform: 'scale(1.6)', opacity: 0 }], 300).onfinish = () => el.remove();
+  }
+
+  function pointer(dx, dy, dt) {
+    const speed = Math.hypot(dx, dy) / dt; // px per ms
+    const f = cfg.speed * (1 + cfg.accel * Math.min(Math.max(speed - 0.15, 0), 2.5));
+    pend.mx += dx * f; pend.my += dy * f; queue();
+  }
+
+  function scroll(dx, dy) {
+    if (Math.abs(dy) > 2 * Math.abs(dx)) dx = 0; else if (Math.abs(dx) > 2 * Math.abs(dy)) dy = 0;
+    const k = PX_PER_NOTCH / cfg.scroll, s = cfg.natural ? 1 : -1;
+    pend.sv += s * dy / k; pend.sh += -s * dx / k; queue();
+  }
+
+  function stopInertia() { if (inertia) { cancelAnimationFrame(inertia); inertia = null; } }
+  function startInertia(vx, vy) {
+    let last = performance.now();
+    const step = now => {
+      const dt = Math.min(now - last, 50); last = now;
+      vx *= Math.pow(0.996, dt); vy *= Math.pow(0.996, dt);
+      if (Math.hypot(vx, vy) < 0.03) { inertia = null; return; }
+      scroll(vx * dt, vy * dt);
+      inertia = requestAnimationFrame(step);
+    };
+    inertia = requestAnimationFrame(step);
+  }
+
+  pad.addEventListener('touchstart', e => {
+    e.preventDefault();
+    stopInertia();
+    const now = performance.now();
+    let added = false;
+    for (const t of e.changedTouches) {
+      if (!pad.contains(t.target)) continue;
+      pts.set(t.identifier, { x: t.clientX, y: t.clientY });
+      added = true;
+    }
+    if (!added) return;
+    if (!g) {
+      const t = e.changedTouches[0];
+      g = { start: now, lastT: now, max: 0, moved: 0, mode: null, drag: false, frozen: false, swiped: false, vx: 0, vy: 0,
+            dragCand: cfg.tap && now - lastTap.t < DRAG_WINDOW && Math.hypot(t.clientX - lastTap.x, t.clientY - lastTap.y) < 90 };
+    } else if (!g.drag) {
+      g.mode = null;
+    }
+    g.max = Math.max(g.max, pts.size);
+    rebase();
+  }, { passive: false });
+
+  pad.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!g) return;
+    let any = false;
+    for (const t of e.changedTouches) { const p = pts.get(t.identifier); if (p) { p.x = t.clientX; p.y = t.clientY; any = true; } }
+    if (!any) return;
+    const now = performance.now(), dt = Math.max(1, now - g.lastT); g.lastT = now;
+    const c = centroid(), dx = c.x - g.c.x, dy = c.y - g.c.y; g.c = c;
+    g.moved += Math.hypot(dx, dy);
+    if (g.frozen) return;
+    const n = pts.size;
+
+    if (g.drag || n === 1) {
+      if (g.dragCand && !g.drag && g.moved > TAP_MOVE) { g.drag = true; send(['d', 'left']); buzz(); }
+      pointer(dx, dy, dt);
+    } else if (n === 2) {
+      const d = spread();
+      if (!g.mode) {
+        const dd = Math.abs(d - g.d0), cm = Math.hypot(c.x - g.c0.x, c.y - g.c0.y);
+        if (dd > 25 && dd > cm * 1.3) g.mode = 'pinch';
+        else if (cm > 12) g.mode = 'scroll';
+      }
+      if (g.mode === 'scroll') {
+        scroll(dx, dy);
+        g.vx = 0.6 * g.vx + 0.4 * (dx / dt); g.vy = 0.6 * g.vy + 0.4 * (dy / dt);
+      } else if (g.mode === 'pinch' && g.lastD > 0) {
+        pend.z += Math.log2(d / g.lastD) * 4; queue();
+      }
+      g.lastD = d;
+    } else if (!g.swiped) {
+      const sx = c.x - g.c0.x, sy = c.y - g.c0.y;
+      if (Math.hypot(sx, sy) > SWIPE_DIST) {
+        const dir = Math.abs(sx) > Math.abs(sy) ? (sx > 0 ? 'right' : 'left') : (sy > 0 ? 'down' : 'up');
+        send(['g', `swipe${Math.min(n, 4)}_${dir}`]); g.swiped = true; buzz();
+      }
+    }
+  }, { passive: false });
+
+  function end(e) {
+    e.preventDefault();
+    if (!g) return;
+    for (const t of e.changedTouches) pts.delete(t.identifier);
+    if (pts.size > 0) { if (!g.drag) g.frozen = true; rebase(); return; }
+
+    const now = performance.now();
+    const isTap = now - g.start < TAP_MS + (g.max > 1 ? 80 : 0) && g.moved < TAP_MOVE * g.max && !g.swiped;
+    if (g.drag) {
+      send(['u', 'left']);
+    } else if (isTap && cfg.tap) {
+      const btn = g.max === 1 ? 'left' : g.max === 2 ? 'right' : g.max === 3 ? 'middle' : null;
+      if (btn) { send(['c', btn]); buzz(); ripple(g.c.x, g.c.y); }
+      if (g.max === 1) lastTap = { t: now, x: g.c.x, y: g.c.y };
+    } else if (g.mode === 'scroll' && cfg.inertia && now - g.lastT < 60 && Math.hypot(g.vx, g.vy) > 0.3) {
+      startInertia(g.vx, g.vy);
+    }
+    g = null;
+  }
+  pad.addEventListener('touchend', end, { passive: false });
+  pad.addEventListener('touchcancel', end, { passive: false });
+
+  // physical-style buttons (hold to drag works too)
+  for (const b of document.querySelectorAll('[data-btn]')) {
+    b.addEventListener('touchstart', e => { e.preventDefault(); send(['d', b.dataset.btn]); b.classList.add('on'); buzz(); }, { passive: false });
+    const up = e => { e.preventDefault(); if (b.classList.contains('on')) { send(['u', b.dataset.btn]); b.classList.remove('on'); } };
+    b.addEventListener('touchend', up, { passive: false });
+    b.addEventListener('touchcancel', up, { passive: false });
+  }
+
+  // ---------------- keyboard ----------------
+  const app = $('#app'), ta = $('#type'), keysRow = $('#keys');
+  const SENT = '​​'; // invisible guard so Backspace works on an "empty" field
+  const KEYS = [
+    ['Ctrl', 'ctrl', 1], ['Alt', 'alt', 1], ['Shift', 'shift', 1], ['Win', 'super', 1], '|',
+    ['Esc', 'esc'], ['Tab', 'tab'], ['←', 'left'], ['↑', 'up'], ['↓', 'down'], ['→', 'right'],
+    ['Home', 'home'], ['End', 'end'], ['PgUp', 'pageup'], ['PgDn', 'pagedown'], ['Del', 'delete'], '|',
+    ['Copy', ['ctrl', 'c']], ['Paste', ['ctrl', 'v']], ['Cut', ['ctrl', 'x']], ['Undo', ['ctrl', 'z']],
+    ['Sel all', ['ctrl', 'a']], '|',
+    ...Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, `f${i + 1}`]), '|',
+    ['Vol−', 'volumedown'], ['Vol+', 'volumeup'], ['Mute', 'mute'], ['⏯', 'playpause'], ['PrtSc', 'printscreen'],
+  ];
+  const PUNCT = { '-': 'minus', '=': 'equal', '[': 'leftbrace', ']': 'rightbrace', ';': 'semicolon',
+                  "'": 'apostrophe', '`': 'grave', '\\': 'backslash', ',': 'comma', '.': 'dot', '/': 'slash', ' ': 'space' };
+  const mods = new Set();
+  const modBtns = {};
+
+  function clearMods() { mods.clear(); for (const b of Object.values(modBtns)) b.classList.remove('on'); }
+  for (const k of KEYS) {
+    if (k === '|') { const s = document.createElement('span'); s.className = 'sep'; keysRow.appendChild(s); continue; }
+    const [label, key, isMod] = k, b = document.createElement('button');
+    b.textContent = label;
+    if (isMod) { b.className = 'mod'; modBtns[key] = b; }
+    b.addEventListener('mousedown', e => e.preventDefault()); // keep phone keyboard open
+    b.addEventListener('click', () => {
+      buzz();
+      if (isMod) { mods.has(key) ? mods.delete(key) : mods.add(key); b.classList.toggle('on', mods.has(key)); return; }
+      send(['k', Array.isArray(key) ? key : [...mods, key]]);
+      clearMods();
+    });
+    keysRow.appendChild(b);
+  }
+
+  function openKeyboard(open) {
+    app.classList.toggle('kbd-open', open);
+    $('#kbdBtn').classList.toggle('on', open);
+    if (open) { resetText(); ta.focus(); } else { ta.blur(); clearMods(); }
+  }
+  $('#kbdBtn').onclick = () => openKeyboard(!app.classList.contains('kbd-open'));
+
+  let prev = SENT, composing = false;
+  function resetText() { ta.value = SENT; prev = SENT; caretToEnd(); }
+  function caretToEnd() { const n = ta.value.length; try { ta.setSelectionRange(n, n); } catch (e) {} }
+  function keyName(ch) { const l = ch.toLowerCase(); return /^[a-z0-9]$/.test(l) ? l : PUNCT[ch]; }
+
+  // Compare old and new field text -> send backspaces + new characters.
+  // This works with autocorrect, suggestions, swipe typing and every language.
+  function sync() {
+    const a = [...prev], b = [...ta.value];
+    if (ta.value === prev) return;
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    const del = a.length - i, ins = b.slice(i).join('').replace(/​/g, '');
+    prev = ta.value;
+    if (mods.size && !del && [...ins].length === 1 && keyName(ins)) {
+      send(['k', [...mods, keyName(ins)]]); clearMods(); resetText(); return;
+    }
+    if (del) send(['bs', del]);
+    if (ins) send(['t', ins]);
+  }
+  function maybeReset() {
+    const v = ta.value;
+    if (!v.startsWith(SENT) || v.endsWith('\n') || v.length > 200) resetText();
+  }
+  ta.addEventListener('compositionstart', () => { composing = true; });
+  ta.addEventListener('compositionend', () => { composing = false; sync(); maybeReset(); });
+  ta.addEventListener('input', () => { sync(); if (!composing) maybeReset(); });
+  ta.addEventListener('click', caretToEnd);
+  ta.addEventListener('focus', () => setTimeout(caretToEnd, 0));
+
+  connect();
+})();
+</script>
+</body>
+</html>
